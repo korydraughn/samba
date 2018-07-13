@@ -1,8 +1,11 @@
 #include "includes.h"
 #include "librpc/gen_ndr/ioctl.h"
 
-static uint32_t fc_fs_capabilities(struct vfs_handle_struct* _handle,
-                                   enum timestamp_set_resolution* _ts_res)
+//#undef DBGC_CLASS
+//#define DBGC_CLASS DBGC_VFS
+
+static uint32_t fake_fs_capabilities(struct vfs_handle_struct* _handle,
+                                     enum timestamp_set_resolution* _ts_res)
 {
     uint32_t fs_capabilities;
     enum timestamp_set_resolution ts_res;
@@ -14,20 +17,20 @@ static uint32_t fc_fs_capabilities(struct vfs_handle_struct* _handle,
     return fs_capabilities;
 }
 
-static NTSTATUS fc_get_compression(struct vfs_handle_struct* _handle,
-                                   TALLOC_CTX* _mem_ctx,
-                                   struct files_struct* _fsp,
-                                   struct smb_filename* _smb_fname,
-                                   uint16_t* _compression_fmt)
+static NTSTATUS fake_get_compression(struct vfs_handle_struct* _handle,
+                                     TALLOC_CTX* _mem_ctx,
+                                     struct files_struct* _fsp,
+                                     struct smb_filename* _smb_fname,
+                                     uint16_t* _compression_fmt)
 {
     *_compression_fmt = COMPRESSION_FORMAT_NONE;
     return NT_STATUS_OK;
 }
 
-static NTSTATUS fc_set_compression(struct vfs_handle_struct* _handle,
-                                   TALLOC_CTX* _mem_ctx,
-                                   struct files_struct* _fsp,
-                                   uint16_t _compression_fmt)
+static NTSTATUS fake_set_compression(struct vfs_handle_struct* _handle,
+                                     TALLOC_CTX* _mem_ctx,
+                                     struct files_struct* _fsp,
+                                     uint16_t _compression_fmt)
 {
     NTSTATUS status;
 
@@ -44,13 +47,15 @@ err_out:
 }
 
 static struct vfs_fn_pointers fake_compression_fns = {
-    .fs_capabilities_fn = fc_fs_capabilities,
-    .get_compression_fn = fc_get_compression,
-    .set_compression_fn = fc_set_compression
+    .fs_capabilities_fn = fake_fs_capabilities,
+    .get_compression_fn = fake_get_compression,
+    .set_compression_fn = fake_set_compression
 };
 
-NTSTATUS vfs_fake_compression_init(void);
-NTSTATUS vfs_fake_compression_init(void)
+static_decl_vfs;
+NTSTATUS vfs_fake_compression_init(TALLOC_CTX* _ctx)
 {
-    return smb_register_vfs(SMB_VFS_INTERFACE_VERSION, "fake_compression", &fake_compression_fns);
+    return smb_register_vfs(SMB_VFS_INTERFACE_VERSION,
+                            "fake_compression",
+                            &fake_compression_fns);
 }
