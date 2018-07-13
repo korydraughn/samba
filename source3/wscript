@@ -75,6 +75,10 @@ def set_options(opt):
                   help=("enable support for VxFS (default=no)"),
                   action="store_true", dest='enable_vxfs', default=False)
 
+    opt.add_option('--enable-vfs-irods',
+                  help=("enable support for iRODS VFS (default=no)"),
+                  action="store_true", dest='enable_vfs_irods', default=False)
+
     opt.SAMBA3_ADD_OPTION('spotlight', with_name="enable", without_name="disable", default=False)
 
 def configure(conf):
@@ -1575,6 +1579,9 @@ main() {
     if Options.options.enable_vxfs:
         conf.DEFINE('HAVE_VXFS', '1')
 
+    if Options.options.enable_vfs_irods:
+        conf.DEFINE('HAVE_VFS_IRODS', '1')
+
     if conf.CHECK_CFG(package='dbus-1', args='--cflags --libs',
                       msg='Checking for dbus', uselib_store="DBUS-1"):
         if (conf.CHECK_HEADERS('dbus/dbus.h', lib='dbus-1')
@@ -1658,7 +1665,7 @@ main() {
                                       vfs_preopen vfs_catia
                                       vfs_media_harmony vfs_unityed_media vfs_fruit vfs_shell_snap
                                       vfs_commit vfs_worm vfs_crossrename vfs_linux_xfs_sgid
-                                      vfs_time_audit vfs_offline vfs_virusfilter
+                                      vfs_time_audit vfs_offline vfs_virusfilter vfs_skel_opaque
                                   '''))
     default_shared_modules.extend(TO_LIST('auth_script idmap_tdb2 idmap_script'))
     # these have broken dependencies
@@ -1716,6 +1723,9 @@ main() {
 
     if conf.CONFIG_SET('HAVE_VXFS'):
         default_shared_modules.extend(TO_LIST('vfs_vxfs'))
+
+    if conf.CONFIG_SET('HAVE_VFS_IRODS'):
+        default_shared_modules.extend(TO_LIST('vfs_skel_opaque'))
 
     if conf.CONFIG_SET('HAVE_DBUS'):
         default_shared_modules.extend(TO_LIST('vfs_snapper'))
