@@ -1899,6 +1899,7 @@ main() {
                                       vfs_commit vfs_worm vfs_crossrename vfs_linux_xfs_sgid
                                       vfs_time_audit vfs_offline vfs_virusfilter
                                       vfs_fake_compression
+                                      vfs_irods
                                   '''))
     default_shared_modules.extend(TO_LIST('idmap_tdb2 idmap_script'))
     # these have broken dependencies
@@ -2090,3 +2091,21 @@ main() {
         Logs.info("%s: %s" % (shared_env, ','.join(conf.env[shared_env])))
 
     conf.SAMBA_CONFIG_H('include/config.h')
+
+    conf.CHECK_LIB('irods_smb', shlib=True)
+    #conf.ADD_LDFLAGS('-Wl,--export-dynamic')
+
+    #conf.CHECK_LIB('irods_smb', shlib=False)
+    #conf.ADD_LDFLAGS('-lirods_smb')
+
+    #conf.CHECK_LIB('kdd_dyncast', shlib=False)
+    #conf.ADD_LDFLAGS('-lkdd_dyncast')
+
+    #conf.CHECK_LIB('irods_client', shlib=True)
+    #conf.CHECK_LIB('irods_plugin_dependencies', shlib=True)
+    #conf.CHECK_LIB('irods_common', shlib=True)
+    #conf.ADD_LDFLAGS('''
+        #-lirods_client
+        #-lirods_plugin_dependencies
+        #-lirods_common
+    #''')

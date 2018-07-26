@@ -615,3 +615,17 @@ bld.SAMBA3_MODULE('vfs_fake_compression',
                  init_function='',
                  internal_module=bld.SAMBA3_IS_STATIC_MODULE('vfs_fake_compression'),
                  enabled=bld.SAMBA3_IS_ENABLED_MODULE('vfs_fake_compression'))
+
+bld.SAMBA3_MODULE('vfs_irods',
+                 subsystem='vfs',
+                 source='vfs_irods.c',
+                 #deps='kdd_dyncast',
+                 #deps='''
+                    #irods_common
+                    #irods_plugin_dependencies
+                    #irods_client
+                 #''',
+                 deps='irods_smb',
+                 init_function='',
+                 internal_module=bld.SAMBA3_IS_STATIC_MODULE('vfs_irods'),
+                 enabled=bld.SAMBA3_IS_ENABLED_MODULE('vfs_irods'))
