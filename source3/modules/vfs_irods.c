@@ -78,15 +78,6 @@ static int irods_connect(vfs_handle_struct *handle, const char *service,
         DEBUG(0, ("\tconnectpath = %s\n", handle->conn->connectpath));
         DEBUG(0, ("\torigpath    = %s\n", handle->conn->origpath));
 
-        int init_res = ismb_init();
-
-        if (init_res != 0)
-        {
-            DEBUG(0, ("irods_connect - ismb_init rc = %d\n", init_res));
-            errno = ENOSYS;
-            return -1;
-        }
-
 #ifdef VFS_IRODS_USE_DLOPEN
         static int lib_loaded = 0;
 
@@ -226,8 +217,8 @@ static uint32_t irods_fs_capabilities(struct vfs_handle_struct *handle,
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	//return FILE_CASE_SENSITIVE_SEARCH | FILE_CASE_PRESERVED_NAMES;
-	return 0;
+	return FILE_CASE_SENSITIVE_SEARCH | FILE_CASE_PRESERVED_NAMES;
+	//return 0;
 }
 
 static NTSTATUS irods_get_dfs_referrals(struct vfs_handle_struct *handle,
@@ -245,7 +236,21 @@ static DIR *irods_opendir(vfs_handle_struct *handle,
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	return NULL;
+
+        irods_context* ctx;
+        SMB_VFS_HANDLE_GET_DATA(handle, ctx, irods_context, errno = ENOMEM; return NULL);
+
+        irods_collection_stream* coll_stream;
+
+        if (ismb_opendir(ctx, smb_fname->base_name, &coll_stream) != 0)
+        {
+            errno = ENOSYS;
+            return NULL;
+        }
+
+        DEBUG(0, ("coll_stream: %p\n", coll_stream));
+
+	return (DIR*) coll_stream;
 }
 
 static NTSTATUS irods_snap_check_path(struct vfs_handle_struct *handle,
@@ -286,7 +291,22 @@ static DIR *irods_fdopendir(vfs_handle_struct *handle, files_struct *fsp,
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	return NULL;
+        DEBUG(0, ("fsp->fsp_name->base_name: %s\n", fsp->fsp_name->base_name));
+
+        irods_context* ctx;
+        SMB_VFS_HANDLE_GET_DATA(handle, ctx, irods_context, errno = ENOMEM; return NULL);
+
+        irods_collection_stream* coll_stream;
+
+        if (ismb_opendir(ctx, fsp->fsp_name->base_name, &coll_stream) != 0)
+        {
+            errno = ENOSYS;
+            return NULL;
+        }
+
+        DEBUG(0, ("coll_stream: %p\n", coll_stream));
+
+	return (DIR*) coll_stream;
 }
 
 static struct dirent *irods_readdir(vfs_handle_struct *handle,
@@ -294,7 +314,22 @@ static struct dirent *irods_readdir(vfs_handle_struct *handle,
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	return NULL;
+        DEBUG(0, ("coll_stream      = %p\n", (irods_collection_stream*) dirp));
+
+        irods_context* ctx;
+        SMB_VFS_HANDLE_GET_DATA(handle, ctx, irods_context, errno = ENOSYS; return NULL);
+
+        struct dirent* entry = ismb_readdir(ctx, (irods_collection_stream*) dirp);
+
+        if (!entry)
+            return NULL;
+
+        DEBUG(0, ("coll_entry inode = %lu\n", entry->d_ino));
+        DEBUG(0, ("coll_entry name  = %s\n", entry->d_name));
+
+        SET_STAT_INVALID(*sbuf);
+
+        return entry;
 }
 
 static void irods_seekdir(vfs_handle_struct *handle, DIR *dirp, long offset)
@@ -308,7 +343,13 @@ static long irods_telldir(vfs_handle_struct *handle, DIR *dirp)
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	return (long)-1;
+
+        irods_context* ctx;
+        SMB_VFS_HANDLE_GET_DATA(handle, ctx, irods_context, errno = ENOSYS; return (long) -1);
+
+        return (long) ismb_telldir(ctx);
+
+	//return (long)-1;
 }
 
 static void irods_rewind_dir(vfs_handle_struct *handle, DIR *dirp)
@@ -341,8 +382,13 @@ static int irods_closedir(vfs_handle_struct *handle, DIR *dir)
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	errno = ENOSYS;
-	return -1;
+
+        irods_context* ctx;
+        SMB_VFS_HANDLE_GET_DATA(handle, ctx, irods_context, errno = ENOSYS; return -1);
+
+        ismb_closedir(ctx, (irods_collection_stream*) dir);
+
+	return 0;
 }
 
 static int irods_open(vfs_handle_struct *handle, struct smb_filename *smb_fname,
@@ -350,8 +396,9 @@ static int irods_open(vfs_handle_struct *handle, struct smb_filename *smb_fname,
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	errno = ENOSYS;
-	return -1;
+	//errno = ENOSYS;
+	//return -1;
+        return 0;
 }
 
 static NTSTATUS irods_create_file(struct vfs_handle_struct *handle,
@@ -429,8 +476,9 @@ static int irods_close_fn(vfs_handle_struct *handle, files_struct *fsp)
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	errno = ENOSYS;
-	return -1;
+	//errno = ENOSYS;
+	//return -1;
+        return 0;
 }
 
 static ssize_t irods_pread(vfs_handle_struct *handle, files_struct *fsp,
@@ -600,8 +648,9 @@ static int irods_fstat(vfs_handle_struct *handle, files_struct *fsp,
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	errno = ENOSYS;
-	return -1;
+	//errno = ENOSYS;
+	//return -1;
+        return 0;
 }
 
 static int irods_lstat(vfs_handle_struct *handle,
@@ -1442,9 +1491,9 @@ struct vfs_fn_pointers irods_fns = {
 
 	/* File operations */
 
-	.open_fn = irods_open,
+	.open_fn = NULL, //irods_open,
 	.create_file_fn = NULL, //irods_create_file,
-	.close_fn = irods_close_fn,
+	.close_fn = NULL, //irods_close_fn,
 	.pread_fn = irods_pread,
 	.pread_send_fn = irods_pread_send,
 	.pread_recv_fn = irods_pread_recv,
@@ -1482,7 +1531,7 @@ struct vfs_fn_pointers irods_fns = {
 	.mknod_fn = irods_mknod,
 	.realpath_fn = irods_realpath,
 	.chflags_fn = irods_chflags,
-	.file_id_create_fn = irods_file_id_create,
+	.file_id_create_fn = NULL, //irods_file_id_create,
 	.offload_read_send_fn = irods_offload_read_send,
 	.offload_read_recv_fn = irods_offload_read_recv,
 	.offload_write_send_fn = irods_offload_write_send,
@@ -1497,15 +1546,15 @@ struct vfs_fn_pointers irods_fns = {
 	.brl_unlock_windows_fn = irods_brl_unlock_windows,
 	.brl_cancel_windows_fn = irods_brl_cancel_windows,
 	.strict_lock_check_fn = irods_strict_lock_check,
-	.translate_name_fn = irods_translate_name,
+	.translate_name_fn = NULL, //irods_translate_name,
 	.fsctl_fn = irods_fsctl,
-	.readdir_attr_fn = irods_readdir_attr,
+	.readdir_attr_fn = NULL, //irods_readdir_attr,
 
 	/* DOS attributes. */
-	.get_dos_attributes_fn = irods_get_dos_attributes,
-	.fget_dos_attributes_fn = irods_fget_dos_attributes,
-	.set_dos_attributes_fn = irods_set_dos_attributes,
-	.fset_dos_attributes_fn = irods_fset_dos_attributes,
+	.get_dos_attributes_fn = NULL, //irods_get_dos_attributes,
+	.fget_dos_attributes_fn = NULL, //irods_fget_dos_attributes,
+	.set_dos_attributes_fn = NULL, //irods_set_dos_attributes,
+	.fset_dos_attributes_fn = NULL, //irods_fset_dos_attributes,
 
 	/* NT ACL operations. */
 

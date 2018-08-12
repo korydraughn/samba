@@ -1,6 +1,8 @@
 #ifndef LIB_IRODS_SMB_HPP
 #define LIB_IRODS_SMB_HPP
 
+#include <dirent.h>
+
 #include <irods/rodsClient.h>
 
 typedef int error_code;
@@ -42,13 +44,19 @@ typedef struct _irods_fd
     long inode;
 } irods_fd;
 
+typedef struct _irods_collection_entry
+{
+    char path[1024];
+    long inode;
+} irods_collection_entry;
+
+typedef int irods_collection_stream;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 error_code ismb_test();
-
-int ismb_init();
 
 irods_context* ismb_create_context(const char* _smb_path);
 
@@ -78,15 +86,19 @@ error_code ismb_change_directory(irods_context* _ctx, const char* _target_dir);
 
 error_code ismb_get_working_directory(irods_context* _ctx, char** _dir);
 
-void ismb_opendir(irods_context* _ctx, const char* _path);
+error_code ismb_opendir(irods_context* _ctx,
+                        const char* _path,
+                        irods_collection_stream** _coll_stream);
 
-error_code ismb_fdopendir(irods_context* _ctx, const char* _path);
+error_code ismb_fdopendir(irods_context* _ctx,
+                          const char* _path,
+                          irods_collection_stream** _coll_stream);
 
-error_code ismb_readdir(irods_context* _ctx, const char* _path);
+struct dirent* ismb_readdir(irods_context* _ctx, irods_collection_stream* _coll_stream);
 
 error_code ismb_seekdir(irods_context* _ctx, const char* _path);
 
-error_code ismb_telldir(irods_context* _ctx, const char* _path);
+error_code ismb_telldir(irods_context* _ctx);
 
 error_code ismb_rewind_dir(irods_context* _ctx, const char* _path);
 
@@ -94,7 +106,7 @@ error_code ismb_mkdir(irods_context* _ctx, const char* _path);
 
 error_code ismb_rmdir(irods_context* _ctx, const char* _path);
 
-error_code ismb_closedir(irods_context* _ctx, const char* _path);
+void ismb_closedir(irods_context* _ctx, irods_collection_stream* _coll_stream);
 
 #ifdef __cplusplus
 } // extern "C"
