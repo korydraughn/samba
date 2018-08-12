@@ -624,6 +624,8 @@ static int irods_stat(vfs_handle_struct *handle, struct smb_filename *smb_fname)
         st->st_ex_gid = 1000;
         st->st_ex_ino = stats.id;
         st->st_ex_size = stats.size;
+        st->st_ex_ctime.tv_sec = stats.creation_time;
+        st->st_ex_mtime.tv_sec = stats.modified_time;
 
         switch (stats.type)
         {
