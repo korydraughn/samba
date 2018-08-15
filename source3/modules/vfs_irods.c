@@ -326,8 +326,9 @@ static struct dirent *irods_readdir(vfs_handle_struct *handle,
 
         DEBUG(0, ("coll_entry inode = %lu\n", entry->d_ino));
         DEBUG(0, ("coll_entry name  = %s\n", entry->d_name));
-
-        SET_STAT_INVALID(*sbuf);
+        
+        if (sbuf)
+            SET_STAT_INVALID(*sbuf);
 
         return entry;
 }
@@ -365,8 +366,21 @@ static int irods_mkdir(vfs_handle_struct *handle,
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	errno = ENOSYS;
-	return -1;
+        DEBUG(0, ("filename = %s\n", smb_fname->base_name));
+        DEBUG(0, ("mode     = %d\n", mode));
+
+        irods_context* ctx;
+        SMB_VFS_HANDLE_GET_DATA(handle, ctx, irods_context, errno = ENOSYS; return -1);
+
+        if (ismb_mkdir(ctx, smb_fname->base_name) != 0)
+        {
+            errno = EACCES;
+            return -1;
+        }
+
+        return 0;
+	//errno = ENOSYS;
+	//return -1;
 }
 
 static int irods_rmdir(vfs_handle_struct *handle,
@@ -374,8 +388,20 @@ static int irods_rmdir(vfs_handle_struct *handle,
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	errno = ENOSYS;
-	return -1;
+        DEBUG(0, ("filename = %s\n", smb_fname->base_name));
+
+        irods_context* ctx;
+        SMB_VFS_HANDLE_GET_DATA(handle, ctx, irods_context, errno = ENOSYS; return -1);
+
+        if (ismb_rmdir(ctx, smb_fname->base_name) != 0)
+        {
+            errno = EACCES;
+            return -1;
+        }
+
+        return 0;
+	//errno = ENOSYS;
+	//return -1;
 }
 
 static int irods_closedir(vfs_handle_struct *handle, DIR *dir)
@@ -391,14 +417,33 @@ static int irods_closedir(vfs_handle_struct *handle, DIR *dir)
 	return 0;
 }
 
-static int irods_open(vfs_handle_struct *handle, struct smb_filename *smb_fname,
-		     files_struct *fsp, int flags, mode_t mode)
+static int irods_open(vfs_handle_struct *handle,
+                      struct smb_filename *smb_fname,
+		      files_struct *fsp,
+                      int flags,
+                      mode_t mode)
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	//errno = ENOSYS;
-	//return -1;
-        return 0;
+        DEBUG(0, ("base_name = %s\n", smb_fname->base_name));
+        DEBUG(0, ("flags     = %d\n", flags));
+        DEBUG(0, ("mode      = %u\n", mode));
+
+	errno = ENOSYS;
+
+        if (smb_fname->stream_name)
+            return -1;
+
+        irods_context* ctx;
+        SMB_VFS_HANDLE_GET_DATA(handle, ctx, irods_context, errno = ENOSYS; return -1);
+
+        int fd = ismb_open(ctx, smb_fname->base_name, flags, mode);
+        DEBUG(0, ("fd        = %d\n", fd));
+
+        if (fd < 0)
+            return -1;
+
+	return fd;
 }
 
 static NTSTATUS irods_create_file(struct vfs_handle_struct *handle,
@@ -476,9 +521,20 @@ static int irods_close_fn(vfs_handle_struct *handle, files_struct *fsp)
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
+        DEBUG(0, ("fsp->fh->fd              = %i\n", fsp->fh->fd));
+        DEBUG(0, ("fsp->fsp_name->base_name = %s\n", fsp->fsp_name->base_name));
+
+	errno = ENOSYS;
+
+        irods_context* ctx;
+        SMB_VFS_HANDLE_GET_DATA(handle, ctx, irods_context, errno = ENOSYS; return -1);
+
+        int ec = ismb_close(ctx, fsp->fh->fd);
+        DEBUG(0, ("error code  = %d\n", ec));
+
+        return ec;
 	//errno = ENOSYS;
 	//return -1;
-        return 0;
 }
 
 static ssize_t irods_pread(vfs_handle_struct *handle, files_struct *fsp,
@@ -510,13 +566,27 @@ static ssize_t irods_pread_recv(struct tevent_req *req,
 	return -1;
 }
 
-static ssize_t irods_pwrite(vfs_handle_struct *handle, files_struct *fsp,
-			   const void *data, size_t n, off_t offset)
+static ssize_t irods_pwrite(vfs_handle_struct *handle,
+                            files_struct *fsp,
+			    const void *data,
+                            size_t n,
+                            off_t offset)
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
+
 	errno = ENOSYS;
-	return -1;
+
+        irods_context* ctx;
+        SMB_VFS_HANDLE_GET_DATA(handle, ctx, irods_context, errno = ENOSYS; return -1);
+
+        int bytes_written = ismb_write(ctx, fsp->fh->fd, (void*) data, n);
+        DEBUG(0, ("bytes written = %d\n", bytes_written));
+
+        return bytes_written;
+
+	//errno = ENOSYS;
+	//return -1;
 }
 
 static struct tevent_req *irods_pwrite_send(struct vfs_handle_struct *handle,
@@ -603,16 +673,25 @@ static int irods_stat(vfs_handle_struct *handle, struct smb_filename *smb_fname)
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
         DEBUG(0, ("\tcwd = %s\n", handle->conn->cwd_fname->base_name));
 
+        if (smb_fname->stream_name)
+        {
+            errno = ENOENT;
+            return -1;
+        }
+
         irods_context* ctx;
         SMB_VFS_HANDLE_GET_DATA(handle, ctx, irods_context, errno = ENOSYS; return -1);
 
         irods_stat_info stats;
-        error_code ec = ismb_stat_path(ctx, smb_fname->base_name, &stats);
+        error_code ec = ismb_stat(ctx, smb_fname->base_name, &stats);
 
         if (ec)
         {
             errno = ENOENT;
             return -1;
+
+            //SET_STAT_INVALID(smb_fname->st);
+            //return 0;
         }
 
         SMB_STRUCT_STAT* st = &smb_fname->st;
@@ -620,8 +699,8 @@ static int irods_stat(vfs_handle_struct *handle, struct smb_filename *smb_fname)
         st->st_ex_dev = 17;
         st->st_ex_rdev = 17;
         st->st_ex_nlink = 1;
-        st->st_ex_uid = 1000;
-        st->st_ex_gid = 1000;
+        st->st_ex_uid = 1000; // FIXME: Use Kerberos or something else
+        st->st_ex_gid = 1000; // FIXME: Use Kerberos or something else
         st->st_ex_ino = stats.id;
         st->st_ex_size = stats.size;
         st->st_ex_ctime.tv_sec = stats.creation_time;
@@ -650,8 +729,47 @@ static int irods_fstat(vfs_handle_struct *handle, files_struct *fsp,
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	//errno = ENOSYS;
-	//return -1;
+        DEBUG(0, ("fsp->fh->fd              = %i\n", fsp->fh->fd));
+        DEBUG(0, ("fsp->fsp_name->base_name = %s\n", fsp->fsp_name->base_name));
+
+        irods_context* ctx;
+        SMB_VFS_HANDLE_GET_DATA(handle, ctx, irods_context, errno = ENOSYS; return -1);
+
+        irods_stat_info stats;
+        error_code ec = ismb_fstat(ctx, fsp->fh->fd, &stats);
+        DEBUG(0, ("ismb_fstat()             = %i\n", ec));
+
+        if (ec)
+        {
+            errno = ENOENT;
+            return -1;
+        }
+
+        sbuf->st_ex_dev = 17;
+        sbuf->st_ex_rdev = 17;
+        sbuf->st_ex_nlink = 1;
+        sbuf->st_ex_uid = 1000; // FIXME: Use Kerberos or something else
+        sbuf->st_ex_gid = 1000; // FIXME: Use Kerberos or something else
+        sbuf->st_ex_ino = stats.id;
+        sbuf->st_ex_size = stats.size;
+        sbuf->st_ex_ctime.tv_sec = stats.creation_time;
+        sbuf->st_ex_mtime.tv_sec = stats.modified_time;
+
+        switch (stats.type)
+        {
+            case IOT_DATA_OBJECT:
+                sbuf->st_ex_mode = S_IFREG | 0777;
+                break;
+
+            case IOT_COLLECTION:
+                sbuf->st_ex_mode = S_IFDIR | 0777;
+                break;
+
+            default:
+                errno = ENOSYS;
+                return -1;
+        }
+
         return 0;
 }
 
@@ -660,8 +778,53 @@ static int irods_lstat(vfs_handle_struct *handle,
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	errno = ENOSYS;
-	return -1;
+
+        if (smb_fname->stream_name)
+        {
+            errno = ENOENT;
+            return -1;
+        }
+
+        irods_context* ctx;
+        SMB_VFS_HANDLE_GET_DATA(handle, ctx, irods_context, errno = ENOSYS; return -1);
+
+        irods_stat_info stats;
+        error_code ec = ismb_stat(ctx, smb_fname->base_name, &stats);
+
+        if (ec)
+        {
+            errno = ENOENT;
+            return -1;
+        }
+
+        SMB_STRUCT_STAT* st = &smb_fname->st;
+
+        st->st_ex_dev = 17;
+        st->st_ex_rdev = 17;
+        st->st_ex_nlink = 1;
+        st->st_ex_uid = 1000; // FIXME: Use Kerberos or something else
+        st->st_ex_gid = 1000; // FIXME: Use Kerberos or something else
+        st->st_ex_ino = stats.id;
+        st->st_ex_size = stats.size;
+        st->st_ex_ctime.tv_sec = stats.creation_time;
+        st->st_ex_mtime.tv_sec = stats.modified_time;
+
+        switch (stats.type)
+        {
+            case IOT_DATA_OBJECT:
+                st->st_ex_mode = S_IFREG | 0777;
+                break;
+
+            case IOT_COLLECTION:
+                st->st_ex_mode = S_IFDIR | 0777;
+                break;
+
+            default:
+                errno = ENOSYS;
+                return -1;
+        }
+
+        return 0;
 }
 
 static uint64_t irods_get_alloc_size(struct vfs_handle_struct *handle,
@@ -746,11 +909,10 @@ static int irods_chdir(vfs_handle_struct *handle,
         SMB_VFS_HANDLE_GET_DATA(handle, ctx, irods_context, return -1);
 
         // smb_fname->base_name will be an absolute path!
-        //ismb_change_directory(ctx, smb_fname->base_name);
+        error_code ec = ismb_chdir(ctx, smb_fname->base_name);
+        DEBUG(0, ("\tismb_chdir(%s) = %i\n", smb_fname->base_name, ec));
 
         /*
-        error_code ec = ismb_change_directory(ctx, smb_fname->base_name);
-
         if (ec)
         {
             errno = ENOSYS;
@@ -769,6 +931,16 @@ static struct smb_filename *irods_getwd(vfs_handle_struct *handle,
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
         DEBUG(0, ("\tcwd         = %s\n", handle->conn->cwd_fname->base_name));
         DEBUG(0, ("\tconnectpath = %s\n", handle->conn->connectpath));
+
+        errno = ENOSYS;
+
+        irods_context* ictx;
+        SMB_VFS_HANDLE_GET_DATA(handle, ictx, irods_context, return NULL);
+
+        char* cwd;
+        ismb_getwd(ictx, &cwd);
+        DEBUG(0, ("\tismb_getwd() = %s\n", cwd));
+        ismb_free_string(cwd);
 
         return synthetic_smb_fname(ctx, handle->conn->connectpath, NULL, NULL, 0);
 
@@ -839,6 +1011,8 @@ static int irods_kernel_flock(struct vfs_handle_struct *handle,
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
+        DBG_ERR("[iRODS] flock unsupported! Consider setting "
+                "'kernel share modes = no'\n");
 	errno = ENOSYS;
 	return -1;
 }
@@ -916,7 +1090,6 @@ static struct smb_filename *irods_realpath(vfs_handle_struct *handle,
         DEBUG(0, ("\tstream_name    = %s\n", smb_fname->stream_name));
         DEBUG(0, ("\toriginal_lcomp = %s\n", smb_fname->original_lcomp));
         DEBUG(0, ("\tflags          = %u\n", smb_fname->flags));
-        //DEBUG(0, ("%s: base_name = %s\n", __FUNCTION__, smb_fname->st));
 
         // Ignore the share path.
         if (strcmp(smb_fname->base_name, handle->conn->connectpath) == 0)
@@ -932,30 +1105,6 @@ static struct smb_filename *irods_realpath(vfs_handle_struct *handle,
         strncat(path, smb_fname->base_name, strlen(smb_fname->base_name));
 
         return synthetic_smb_fname(ctx, path, NULL, NULL, 0);
-
-        /*
-        // Ignore the share path.
-        if (strcmp(smb_fname->base_name, handle->conn->connectpath) == 0)
-            return synthetic_smb_fname(ctx, smb_fname->base_name, NULL, NULL, 0);
-
-        irods_context* ictx;
-        SMB_VFS_HANDLE_GET_DATA(handle, ictx, irods_context, return NULL);
-
-        char* working_dir = NULL;
-        ismb_get_working_directory(ictx, &working_dir);
-
-        char abs_path[1024];
-        memset(abs_path, 0, sizeof(abs_path));
-        strncpy(abs_path, working_dir, strlen(working_dir));
-        strncat(abs_path, "/", 1);
-        strncat(abs_path, smb_fname->base_name, strlen(smb_fname->base_name));
-        ismb_free_string(working_dir);
-
-        DEBUG(0, ("\tabsolute_path = %s\n", abs_path));
-
-        return synthetic_smb_fname(ctx, abs_path, NULL, NULL, 0);
-        */
-
 	//errno = ENOSYS;
 	//return NULL;
 }
@@ -1125,7 +1274,7 @@ static int irods_get_real_filename(struct vfs_handle_struct *handle,
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	errno = ENOSYS;
+	errno = EOPNOTSUPP;
 	return -1;
 }
 
@@ -1493,9 +1642,9 @@ struct vfs_fn_pointers irods_fns = {
 
 	/* File operations */
 
-	.open_fn = NULL, //irods_open,
+	.open_fn = irods_open,
 	.create_file_fn = NULL, //irods_create_file,
-	.close_fn = NULL, //irods_close_fn,
+	.close_fn = irods_close_fn,
 	.pread_fn = irods_pread,
 	.pread_send_fn = irods_pread_send,
 	.pread_recv_fn = irods_pread_recv,
@@ -1520,7 +1669,7 @@ struct vfs_fn_pointers irods_fns = {
 	.lchown_fn = irods_lchown,
 	.chdir_fn = irods_chdir,
 	.getwd_fn = irods_getwd,
-	.ntimes_fn = irods_ntimes,
+	.ntimes_fn = NULL, //irods_ntimes,
 	.ftruncate_fn = irods_ftruncate,
 	.fallocate_fn = irods_fallocate,
 	.lock_fn = irods_lock,
@@ -1547,7 +1696,7 @@ struct vfs_fn_pointers irods_fns = {
 	.brl_lock_windows_fn = irods_brl_lock_windows,
 	.brl_unlock_windows_fn = irods_brl_unlock_windows,
 	.brl_cancel_windows_fn = irods_brl_cancel_windows,
-	.strict_lock_check_fn = irods_strict_lock_check,
+	.strict_lock_check_fn = NULL, //irods_strict_lock_check,
 	.translate_name_fn = NULL, //irods_translate_name,
 	.fsctl_fn = irods_fsctl,
 	.readdir_attr_fn = NULL, //irods_readdir_attr,
@@ -1581,7 +1730,7 @@ struct vfs_fn_pointers irods_fns = {
 	.flistxattr_fn = irods_flistxattr,
 	.removexattr_fn = irods_removexattr,
 	.fremovexattr_fn = irods_fremovexattr,
-	.setxattr_fn = irods_setxattr,
+	.setxattr_fn = NULL, //irods_setxattr,
 	.fsetxattr_fn = irods_fsetxattr,
 
 	/* aio operations */
