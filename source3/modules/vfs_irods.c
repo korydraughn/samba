@@ -22,6 +22,7 @@
  */
 
 #include "includes.h"
+#include "lib/util/tevent_unix.h"
 #include "lib/util/tevent_ntstatus.h"
 
 #include <dlfcn.h>
@@ -589,6 +590,12 @@ static ssize_t irods_pwrite(vfs_handle_struct *handle,
 	//return -1;
 }
 
+typedef struct irods_pwrite_state
+{
+    ssize_t bytes_written;
+    struct vfs_aio_state vfs_aio_state;
+} irods_pwrite_state_t;
+
 static struct tevent_req *irods_pwrite_send(struct vfs_handle_struct *handle,
 					   TALLOC_CTX *mem_ctx,
 					   struct tevent_context *ev,
@@ -598,7 +605,32 @@ static struct tevent_req *irods_pwrite_send(struct vfs_handle_struct *handle,
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	return NULL;
+        DEBUG(0, ("fsp->fh->fd              = %i\n", fsp->fh->fd));
+        DEBUG(0, ("fsp->fsp_name->base_name = %s\n", fsp->fsp_name->base_name));
+
+        // Forwards to the synchronous API.
+
+        irods_pwrite_state_t* state = NULL;
+        struct tevent_req* req = tevent_req_create(mem_ctx, &state, irods_pwrite_state_t);
+
+        if (!req)
+            return NULL;
+
+        irods_context* ctx;
+        SMB_VFS_HANDLE_GET_DATA(handle, ctx, irods_context, return NULL);
+
+        int bytes_written = ismb_write(ctx, fsp->fh->fd, (void*) data, n);
+
+        if (bytes_written < 0)
+        {
+            tevent_req_error(req, 1);
+            return tevent_req_post(req, ev);
+        }
+
+        state->bytes_written = bytes_written;
+        tevent_req_done(req);
+
+        return tevent_req_post(req, ev);
 }
 
 static ssize_t irods_pwrite_recv(struct tevent_req *req,
@@ -606,8 +638,15 @@ static ssize_t irods_pwrite_recv(struct tevent_req *req,
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	vfs_aio_state->error = ENOSYS;
-	return -1;
+
+        irods_pwrite_state_t* state = tevent_req_data(req, irods_pwrite_state_t);
+
+        if (tevent_req_is_unix_error(req, &vfs_aio_state->error))
+            return -1;
+
+        *vfs_aio_state = state->vfs_aio_state;
+
+	return state->bytes_written;
 }
 
 static off_t irods_lseek(vfs_handle_struct *handle, files_struct *fsp,
@@ -842,8 +881,28 @@ static int irods_unlink(vfs_handle_struct *handle,
 {
         DEBUG(0, ("=========================================\n"));
         DEBUG(0, ("FUNCTION: %s\n", __FUNCTION__));
-	errno = ENOSYS;
-	return -1;
+
+        if (smb_fname->stream_name)
+        {
+            errno = ENOENT;
+            return -1;
+        }
+
+        irods_context* ctx;
+        SMB_VFS_HANDLE_GET_DATA(handle, ctx, irods_context, errno = ENOSYS; return -1);
+
+        error_code ec = ismb_unlink(ctx, smb_fname->base_name);
+        DEBUG(0, ("ismb_unlink() = %i\n", ec));
+        
+        if (ec != 0)
+	{
+            errno = ENOSYS;
+            return -1;
+        }
+
+        return 0;
+	//errno = ENOSYS;
+	//return -1;
 }
 
 static int irods_chmod(vfs_handle_struct *handle,
